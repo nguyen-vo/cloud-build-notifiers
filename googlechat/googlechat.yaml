@@ -1,4 +1,4 @@
-# Copyright 2020 Google LLC
+# Copyright 2022 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,12 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-steps:
-- name: gcr.io/cloud-builders/docker
-  args:
-  - build
-  - --file=./smtp/Dockerfile
-  - '.'
-
-tags:
-- cloud-build-notifiers-smtp
+apiVersion: cloud-build-notifiers/v1
+kind: GoogleChatNotifier
+metadata:
+  name: googlechat-notifier-config
+spec:
+  notification:
+    filter: build.status in [Build.Status.SUCCESS, Build.Status.FAILURE, Build.Status.TIMEOUT]
+    delivery:
+      webhookUrl:
+        secretRef: webhook-url
+  secrets:
+  - name: webhook-url
+    value: projects/build-project-409117/secrets/google-chat-webhook/versions/latest

@@ -1,4 +1,4 @@
-# Copyright 2020 Google LLC
+# Copyright 2022 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,11 +13,31 @@
 # limitations under the License.
 
 steps:
+# Build the binary and put it into the builder image.
 - name: gcr.io/cloud-builders/docker
   args:
   - build
-  - --file=./slack/Dockerfile
+  - --tag=${_IMAGE_PATH}
   - '.'
+- name: gcr.io/cloud-builders/docker
+  args:
+  - push
+  - ${_IMAGE_PATH}
+- name: google/cloud-sdk
+  args:
+  - gcloud
+  - run
+  - deploy
+  - --platform=managed
+  - --region=europe-west3
+  - ${_SERVICE_NAME}
+  - --no-allow-unauthenticated
+  - --image=${_IMAGE_PATH}
+  - --no-allow-unauthenticated
+  - --update-env-vars=CONFIG_PATH=${_CONFIG_PATH},PROJECT_ID=${PROJECT_ID}
+substitutions:
+  _IMAGE_PATH: logging-sample
+  _SERVICE_NAME: googlechat-notifier
+  _CONFIG_PATH: cloudbuild-notifier-config/config.yaml
+ 
 
-tags:
-- cloud-build-notifiers-slack

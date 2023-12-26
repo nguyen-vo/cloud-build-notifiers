@@ -20,12 +20,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
-	"github.com/GoogleCloudPlatform/cloud-build-notifiers/lib/notifiers"
-	log "github.com/golang/glog"
 	chat "google.golang.org/api/chat/v1"
 
 	cbpb "cloud.google.com/go/cloudbuild/apiv1/v2/cloudbuildpb"
+	"github.com/GoogleCloudPlatform/cloud-build-notifiers/lib/notifiers"
+	logger "github.com/golang/glog"
 )
 
 const (
@@ -34,7 +35,7 @@ const (
 
 func main() {
 	if err := notifiers.Main(new(googlechatNotifier)); err != nil {
-		log.Fatalf("fatal error: %v", err)
+		logger.Fatalf("fatal error: %v", err)
 	}
 }
 
@@ -44,7 +45,7 @@ type googlechatNotifier struct {
 	webhookURL string
 }
 
-func (g *googlechatNotifier) SetUp(ctx context.Context, cfg *notifiers.Config, _ string, sg notifiers.SecretGetter, _ notifiers.BindingResolver) error {
+func (g *googlechatNotifier) SetUp(ctx context.Context, cfg *notifiers.Config,  sg notifiers.SecretGetter, _ notifiers.BindingResolver) error {
 	prd, err := notifiers.MakeCELPredicate(cfg.Spec.Notification.Filter)
 	if err != nil {
 		return fmt.Errorf("failed to make a CEL predicate: %w", err)
@@ -73,7 +74,7 @@ func (g *googlechatNotifier) SendNotification(ctx context.Context, build *cbpb.B
 		return nil
 	}
 
-	log.Infof("sending Google Chat webhook for Build %q (status: %q)", build.Id, build.Status)
+	logger.Infof("sending Google Chat webhook for Build %q (status: %q)", build.Id, build.Status)
 	msg, err := g.writeMessage(build)
 	if err != nil {
 		return fmt.Errorf("failed to write Google Chat message: %w", err)
@@ -100,17 +101,17 @@ func (g *googlechatNotifier) SendNotification(ctx context.Context, build *cbpb.B
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Warningf("got a non-OK response status %q (%d) from %q", resp.Status, resp.StatusCode, g.webhookURL)
+		logger.Warningf("got a non-OK response status %q (%d) from %q", resp.Status, resp.StatusCode, g.webhookURL)
 	}
 
-	log.V(2).Infoln("send HTTP request successfully")
+	logger.V(2).Infoln("send HTTP request successfully")
 	return nil
 }
+
 
 func (g *googlechatNotifier) writeMessage(build *cbpb.Build) (*chat.Message, error) {
 
 	var icon string
-
 	switch build.Status {
 	case cbpb.Build_SUCCESS:
 		icon = "https://www.gstatic.com/images/icons/material/system/2x/check_circle_googgreen_48dp.png"
@@ -127,6 +128,8 @@ func (g *googlechatNotifier) writeMessage(build *cbpb.Build) (*chat.Message, err
 		return nil, fmt.Errorf("failed to add UTM params: %w", err)
 	}
 
+	location, err := time.LoadLocation("America/New_York")
+
 	// Basic card setup
 	duration := build.GetFinishTime().AsTime().Sub(build.GetStartTime().AsTime())
 	duration_min, duration_sec := int(duration.Minutes()), int(duration.Seconds())-int(duration.Minutes())*60
@@ -134,8 +137,8 @@ func (g *googlechatNotifier) writeMessage(build *cbpb.Build) (*chat.Message, err
 
 	card := &chat.Card{
 		Header: &chat.CardHeader{
-			Title:    fmt.Sprintf("Build %s Status: %s", build.Id[:8], build.Status),
-			Subtitle: build.ProjectId,
+			Title:    fmt.Sprintf("Build: %s", build.Id[:8]),
+			Subtitle: build.GetProjectId(),
 			ImageUrl: icon,
 		},
 		Sections: []*chat.Section{
@@ -146,6 +149,17 @@ func (g *googlechatNotifier) writeMessage(build *cbpb.Build) (*chat.Message, err
 							TopLabel: "Duration",
 							Content:  duration_fmt,
 						},
+					},					{
+						KeyValue: &chat.KeyValue{
+							TopLabel: "Created At",
+							Content:  build.GetCreateTime().AsTime().In(location).Format("2006-01-02 15:04:05 MST"),
+						},
+					},
+					{
+						KeyValue: &chat.KeyValue{
+							TopLabel: "Status",
+							Content:  build.Status.String(),
+						},
 					},
 				},
 			},
@@ -155,7 +169,7 @@ func (g *googlechatNotifier) writeMessage(build *cbpb.Build) (*chat.Message, err
 	// Optional section: display trigger information
 	if build.BuildTriggerId != "" {
 
-		log.Infof("Detected a build trigger id: %s", build.BuildTriggerId)
+		logger.Infof("Detected a build trigger id: %s", build.BuildTriggerId)
 
 		/*
 			//TODO(glasnt): Get trigger information for Uri links.
@@ -174,11 +188,10 @@ func (g *googlechatNotifier) writeMessage(build *cbpb.Build) (*chat.Message, err
 
 		// Branch, Tag, or None.
 		branch_tag_label := "Branch"
-		branch_tag_value := build.Substitutions["BRANCH_NAME"]
+		branch_tag_value := build.GetSource().GetRepoSource().GetBranchName()
 
 		if branch_tag_value == "" {
-			branch_tag_label = "Tag"
-			branch_tag_value = build.Substitutions["TAG_NAME"]
+			branch_tag_value = build.Substitutions["BRANCH_NAME"]
 
 			if branch_tag_value == "" {
 				branch_tag_label = "Branch/Tag"
@@ -191,12 +204,6 @@ func (g *googlechatNotifier) writeMessage(build *cbpb.Build) (*chat.Message, err
 		build_info := &chat.Section{
 			Header: "Trigger information",
 			Widgets: []*chat.WidgetMarkup{
-				{
-					KeyValue: &chat.KeyValue{
-						TopLabel: "Trigger",
-						Content:  trigger_name,
-					},
-				},
 				{
 					KeyValue: &chat.KeyValue{
 						TopLabel: "Repo",

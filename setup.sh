@@ -123,7 +123,7 @@ main() {
   DESTINATION_CONFIG_PATH="${DESTINATION_BUCKET_URI}/${SOURCE_CONFIG_BASENAME}"
   SOURCE_TEMPLATE_BASENAME=$(basename "${SOURCE_TEMPLATE_PATH}")
   DESTINATION_TEMPLATE_PATH="${DESTINATION_BUCKET_URI}/${SOURCE_TEMPLATE_BASENAME}"
-  IMAGE_PATH="us-east1-docker.pkg.dev/gcb-release/cloud-build-notifiers/${NOTIFIER_TYPE}:latest"
+  IMAGE_PATH="gcr.io/${PROJECT_ID}/cloud-build-notifiers/${NOTIFIER_TYPE}:latest"
   SERVICE_NAME="${NOTIFIER_TYPE}-notifier"
   SUBSCRIPTION_NAME="${NOTIFIER_TYPE}-subscription"
   INVOKER_SA="cloud-run-pubsub-invoker@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -202,11 +202,10 @@ upload_config() {
 }
 
 deploy_notifier() {
-  gcloud run deploy "${SERVICE_NAME}" \
-    --image="${IMAGE_PATH}" \
-    --no-allow-unauthenticated \
-    --update-env-vars="CONFIG_PATH=${DESTINATION_CONFIG_PATH},PROJECT_ID=${PROJECT_ID}" ||
-    fail "failed to deploy notifier service -- check service logs for configuration error"
+    gcloud builds submit ./googlechat \
+    --config ./googlechat/cloudbuild.yaml \
+    --substitutions _CONFIG_PATH="${DESTINATION_CONFIG_PATH}",_IMAGE_PATH="${IMAGE_PATH}",_SERVICE_NAME="${SERVICE_NAME}" ||
+    fail "failed to build notifier image"
 }
 
 add_sa_token_creator_permission() {

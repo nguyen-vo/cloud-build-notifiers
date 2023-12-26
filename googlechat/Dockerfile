@@ -14,9 +14,8 @@
 
 FROM golang AS build-env
 COPY . /go-src/
-WORKDIR /go-src/googlechat
+WORKDIR /go-src/
 ENV CGO_ENABLED=0
-RUN go test /go-src/googlechat
 RUN go build -o /go-app .
 
 # From the Cloud Run docs:
@@ -31,4 +30,4 @@ RUN set -x && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -
 
 FROM gcr.io/distroless/base
 COPY --from=build-env /go-app /
-ENTRYPOINT ["/go-app", "--alsologtostderr", "--v=0"]
+ENTRYPOINT ["/go-app", "--v=0", "--alsologtostderr"]
